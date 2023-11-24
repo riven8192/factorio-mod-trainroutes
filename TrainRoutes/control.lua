@@ -124,13 +124,12 @@ function assign_train_to_route(defTrain, reqTrain, routeId)
 	local newSchedule = deepcopy(defTrain.schedule)
 	newSchedule.records[1].station = assignedToRoutePrefix .. routeId
 	
-	local currentTargetStation = reqTrain.schedule.records[reqTrain.schedule.current];
+	local currentTargetStation = reqTrain.schedule.records[reqTrain.schedule.current].station;
 	for idx, record in pairs(newSchedule.records) do
 		if record.station == currentTargetStation then
 			newSchedule.current = idx
 		end
-	end
-	
+	end	
 	
 	reqTrain.schedule = newSchedule
 	reqTrain.manual_mode = false
@@ -149,8 +148,6 @@ function ensure_mod_context()
 		global.modtrainroutes.defRouteId2checksum = {}
 		global.modtrainroutes.defRouteId2changed = {}
 		global.modtrainroutes.defRouteId2lastChangedAt = {}
-		global.modtrainroutes.station2id = {}
-		global.modtrainroutes.id2station = {}
 	end
 end
 
@@ -245,50 +242,6 @@ end
 
 
 
-function add_train_contents_to_station(train, stationId, stationId2item2count)
-	local item2count = stationId2item2count[stationId]
-	if not item2count then
-		item2count = {}
-		stationId2item2count[stationId] = item2count
-	end
-	
-	for itemName, itemCount in pairs(train.get_contents()) do
-		local curCount = item2count[itemName]
-		if not curCount then
-			curCount = 0
-		end
-		item2count[itemName] = curCount + itemCount
-	end
-end
-
-
-
-
-function stationToId(station)
-	for idx, elem in pairs(global.modtrainroutes.station2id) do
-		if elem == station then
-			return idx
-		end
-	end
-	
-	table.insert(global.modtrainroutes.station2id, station)
-	local stationId = table_length(global.modtrainroutes.station2id) -- table.getn(global.modtrainroutes.station2id)
-	global.modtrainroutes.id2station[stationId] = station
-	return stationId
-end
-
-
--- script.on_event({defines.input_action.drag_train_schedule},
--- 	function (e)
--- 		game.print('DRAGGED TRAIN SCHEDULE');
--- 	end
--- )
-
-script.on_event({defines.input_action.edit_train_schedule},
-	function (e)
-		game.print('EDITED TRAIN SCHEDULE');
-	end
-)
 
 
 
@@ -302,90 +255,6 @@ script.on_event({defines.events.on_tick},
 		ensure_mod_context();
 		
 		build_route_mapping_based_on_trains(e.tick);
-		
-		local stationName2stationList = {}
-		local stationId2arrivalTrainIds = {}
-		local stationId2item2count = {}
-		
-		for trainId, curRouteId in pairs(global.modtrainroutes.trainId2curRouteId) do
-			local reqTrain = global.modtrainroutes.trainId2train[trainId];
-			if reqTrain.state == defines.train_state.no_path then
-				-- game.print('No path found for train #' .. reqTrain.id .. ' on route: ' .. curRouteId);
-				
-				
-			end
-			
-			if reqTrain.station or reqTrain.path_end_stop then
-				local station = nil
-				if reqTrain.station then
-					station = reqTrain.station
-				else 
-					station = reqTrain.path_end_stop
-				end
-				local stationId = stationToId(station)
-				local stationName = station.backer_name
-
-				
-				
-				local arrivalTrainIds = stationId2arrivalTrainIds[stationId]
-				if not arrivalTrainIds then
-					arrivalTrainIds = {}
-					stationId2arrivalTrainIds[stationId] = arrivalTrainIds
-				end
-				arrivalTrainIds[trainId] = true
-
-				
-				
-				local stationList = stationName2stationList[stationName]
-				if not stationList then
-					stationList = {}
-					stationName2stationList[stationName] = stationList
-				end
-				table.insert(stationList, station)
-				
-				
-				add_train_contents_to_station(reqTrain, stationId, stationId2item2count)				
-			end
-		end
-		
-		for stationId, station in pairs(global.modtrainroutes.id2station) do
-			if station.valid then
-				for _idx2_, conn in pairs(station.circuit_connection_definitions) do
-					if conn.wire == defines.wire_type.red and conn.target_entity and conn.target_entity.type == 'constant-combinator' then
-						local slot = conn.target_entity.get_control_behavior()
-					
-						slot.set_signal(1, nil);
-						slot.set_signal(2, nil);
-						slot.set_signal(3, nil);
-						
-						-- game.print('Resetting station #' .. station.backer_name);
-					end
-				end
-			end
-		end
-		
-		for stationId, item2count in pairs(stationId2item2count) do
-			local station = global.modtrainroutes.id2station[stationId]
-			
-			for _idx2_, conn in pairs(station.circuit_connection_definitions) do
-				if conn.wire == defines.wire_type.red and conn.target_entity and conn.target_entity.type == 'constant-combinator' then
-					local slot = conn.target_entity.get_control_behavior()
-					
-					slot.set_signal(1, nil);
-					slot.set_signal(2, nil);
-					slot.set_signal(3, nil);
-					
-					
-					local _idx3_ = 1
-					for item, count in pairs(item2count) do
-						slot.set_signal(_idx3_, {signal={type='item'; name=item}; count=count});
-						_idx3_ = _idx3_ + 1
-					end
-				end
-			end
-		end
-		
-		
 		
 		
 			
@@ -407,7 +276,6 @@ script.on_event({defines.events.on_tick},
 		for chgRouteId, _val_ in pairs(global.modtrainroutes.defRouteId2changed) do
 			global.modtrainroutes.defRouteId2lastChangedAt[chgRouteId] = e.tick
 			global.modtrainroutes.defRouteId2changed[chgRouteId] = false
-			-- game.print('Found updated schedules for route: ' .. chgRouteId .. ' (but not applying them yet)')
 		end
 		
 		for chgRouteId, lastChangedAt in pairs(global.modtrainroutes.defRouteId2lastChangedAt) do
@@ -427,7 +295,6 @@ script.on_event({defines.events.on_tick},
 						local defTrain = search_deftrain_based_on_routeid(chgRouteId)
 						
 						if defTrain then
-							-- game.print('Updated schedule of train #' .. curTrain.id .. ' on route \'' .. chgRouteId .. '\'');
 							assign_train_to_route(defTrain, curTrain, chgRouteId)
 							changedTrainCount = changedTrainCount + 1
 						end

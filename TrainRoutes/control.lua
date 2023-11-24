@@ -1,4 +1,4 @@
-require 'rivenmods-common-v0-1-0'
+require 'rivenmods-common-v0-1-1'
 
 
 
@@ -74,19 +74,16 @@ function assign_train_to_route(defTrain, reqTrain, routeId)
 end
 
 
-function ensure_mod_context() 
-	if not global.hasContext then
-		global.hasContext = true;
-		
-		global.trainId2train = {}
-		global.trainId2defRouteId = {}
-		global.trainId2reqRouteId = {}
-		global.trainId2curRouteId = {}
-		global.defRouteId2trainId = {}
-		global.defRouteId2checksum = {}
-		global.defRouteId2changed = {}
-		global.defRouteId2lastChangedAt = {}
-	end
+function ensure_mod_context()
+	ensure_global_rndm()
+	ensure_global_mapping('trainId2train')
+	ensure_global_mapping('trainId2defRouteId')
+	ensure_global_mapping('trainId2reqRouteId')
+	ensure_global_mapping('trainId2curRouteId')
+	ensure_global_mapping('defRouteId2trainId')
+	ensure_global_mapping('defRouteId2checksum')
+	ensure_global_mapping('defRouteId2changed')
+	ensure_global_mapping('defRouteId2lastChangedAt')
 end
 
 
@@ -158,19 +155,19 @@ end
 function search_deftrain_based_on_routeid(routeId)
 	
 	if not global.defRouteId2trainId[routeId] then
-		-- game.print('Failed to find Route ' .. routeId)
+		-- mod_log('Failed to find Route ' .. routeId)
 		return nil
 	end
 	local defTrainId = global.defRouteId2trainId[routeId]
 	
 	if not global.trainId2train[defTrainId] then
-		game.print('Failed to find route \'' .. routeId .. '\' in train #' .. defTrainId)
+		mod_log('Failed to find route \'' .. routeId .. '\' in train #' .. defTrainId)
 		return nil
 	end
 	local defTrain = global.trainId2train[defTrainId]
 	
 	if not defTrain.schedule then
-		game.print('Found empty train-schedule in route \'' .. routeId .. '\' in train #' .. defTrainId)
+		mod_log('Found empty train-schedule in route \'' .. routeId .. '\' in train #' .. defTrainId)
 		return nil
 	end
 	

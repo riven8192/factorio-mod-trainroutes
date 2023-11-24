@@ -3,6 +3,23 @@ IS_VERBOSE = false
 
 
 
+function ensure_global_mapping(key)
+	if not global[key] then
+		global[key] = {}
+	end
+end
+
+function ensure_global_rndm()
+	if not global.rndm then
+		global.rndm = game.create_random_generator()
+		global.rndm.re_seed(1337);
+	end
+end
+
+function map_value_equals(map, key, value)
+	return map[key] and map[key] == value
+end
+
 function mod_log(msg)
 	if IS_VERBOSE then
 		game.print('log: ' .. msg);
@@ -120,5 +137,11 @@ function getTrainSpeed(train)
 end
 
 function setTrainSpeed(train, speed)
+	local signA = math_sign(train.speed);
+	local signB = math_sign(speed);
+	if math.abs(signA - signB) == 2 then
+		-- do not flip velocity, stop instead
+		speed = 0.0
+	end
 	train.speed = speed / GAME_FRAMERATE / 3.6;
 end

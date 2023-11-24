@@ -69,18 +69,7 @@ routePrefix = 'Route: '
 assignedToRoutePrefix = 'Assigned to route: '
 routeNoPathPrefix = 'Route: no path'
 
-isFirstTick = true
-trainId2train = {}
-trainId2defRouteId = {}
-trainId2reqRouteId = {}
-trainId2curRouteId = {}
-defRouteId2trainId = {}
-defRouteId2checksum = {}
-defRouteId2changed = {}
-defRouteId2lastChangedAt = {}
 
-station2id = {}
-id2station = {}
 
 
 
@@ -149,23 +138,39 @@ function assign_train_to_route(defTrain, reqTrain, routeId)
 end
 
 
+function ensure_mod_context() 
+	if not global.modtrainroutes then
+		global.modtrainroutes = {}
+		global.modtrainroutes.trainId2train = {}
+		global.modtrainroutes.trainId2defRouteId = {}
+		global.modtrainroutes.trainId2reqRouteId = {}
+		global.modtrainroutes.trainId2curRouteId = {}
+		global.modtrainroutes.defRouteId2trainId = {}
+		global.modtrainroutes.defRouteId2checksum = {}
+		global.modtrainroutes.defRouteId2changed = {}
+		global.modtrainroutes.defRouteId2lastChangedAt = {}
+		global.modtrainroutes.station2id = {}
+		global.modtrainroutes.id2station = {}
+	end
+end
+
 
 function build_route_mapping_based_on_trains()
-	trainId2train = {}
-	trainId2defRouteId = {}
-	trainId2reqRouteId = {}
-	trainId2curRouteId = {}
-	defRouteId2trainId = {}
-	defRouteId2changed = {}
+	global.modtrainroutes.trainId2train = {}
+	global.modtrainroutes.trainId2defRouteId = {}
+	global.modtrainroutes.trainId2reqRouteId = {}
+	global.modtrainroutes.trainId2curRouteId = {}
+	global.modtrainroutes.defRouteId2trainId = {}
+	global.modtrainroutes.defRouteId2changed = {}
 	
-	local defRouteId2checksumOld = shallowcopy(defRouteId2checksum);
-	defRouteId2checksum = {}
+	local defRouteId2checksumOld = shallowcopy(global.modtrainroutes.defRouteId2checksum);
+	global.modtrainroutes.defRouteId2checksum = {}
 
 	-- iterate all trains in all surfaces
 	for _idx1_, surface in pairs(game.surfaces) do
 		for _idx2_, train in pairs(surface.get_trains()) do
 			local trainId = train.id
-			trainId2train[trainId] = train
+			global.modtrainroutes.trainId2train[trainId] = train
 			
 			if not (train.schedule and train.schedule.records) then
 				goto continue
@@ -185,26 +190,26 @@ function build_route_mapping_based_on_trains()
 				local routeId = firstScheduleRecord.station:sub(#routePrefix + 1)
 				if scheduleRecordCount == 1 then
 					-- trains with Route REQUESTS
-					trainId2reqRouteId[trainId] = routeId
+					global.modtrainroutes.trainId2reqRouteId[trainId] = routeId
 				else
 					-- trains with Route DEFINITIONS
-					trainId2defRouteId[trainId] = routeId
-					defRouteId2trainId[routeId] = trainId
+					global.modtrainroutes.trainId2defRouteId[trainId] = routeId
+					global.modtrainroutes.defRouteId2trainId[routeId] = trainId
 					
 					-- did anything change in the schedule?
 					local oldChecksum = defRouteId2checksumOld[routeId];
 					local newChecksum = create_schedule_checksum(train.schedule);
-					defRouteId2checksum[routeId] = newChecksum
+					global.modtrainroutes.defRouteId2checksum[routeId] = newChecksum
 						
 					if not (oldChecksum == newChecksum) then
-						defRouteId2changed[routeId] = true
+						global.modtrainroutes.defRouteId2changed[routeId] = true
 					end
 				end
 			elseif starts_with(firstScheduleRecord.station, assignedToRoutePrefix) then
 				local routeId = firstScheduleRecord.station:sub(#assignedToRoutePrefix + 1)
 				if scheduleRecordCount > 1 then
 					-- trains with Route ASSIGNED
-					trainId2curRouteId[trainId] = routeId
+					global.modtrainroutes.trainId2curRouteId[trainId] = routeId
 				end
 			end
 			
@@ -217,17 +222,17 @@ end
 
 function search_deftrain_based_on_routeid(routeId)
 	
-	if not defRouteId2trainId[routeId] then
+	if not global.modtrainroutes.defRouteId2trainId[routeId] then
 		-- game.print('Failed to find Route ' .. routeId)
 		return nil
 	end
-	local defTrainId = defRouteId2trainId[routeId]
+	local defTrainId = global.modtrainroutes.defRouteId2trainId[routeId]
 	
-	if not trainId2train[defTrainId] then
+	if not global.modtrainroutes.trainId2train[defTrainId] then
 		game.print('Failed to find route \'' .. routeId .. '\' in train #' .. defTrainId)
 		return nil
 	end
-	local defTrain = trainId2train[defTrainId]
+	local defTrain = global.modtrainroutes.trainId2train[defTrainId]
 	
 	if not defTrain.schedule then
 		game.print('Found empty train-schedule in route \'' .. routeId .. '\' in train #' .. defTrainId)
@@ -260,15 +265,15 @@ end
 
 
 function stationToId(station)
-	for idx, elem in pairs(station2id) do
+	for idx, elem in pairs(global.modtrainroutes.station2id) do
 		if elem == station then
 			return idx
 		end
 	end
 	
-	table.insert(station2id, station)
-	local stationId = table_length(station2id) -- table.getn(station2id)
-	id2station[stationId] = station
+	table.insert(global.modtrainroutes.station2id, station)
+	local stationId = table_length(global.modtrainroutes.station2id) -- table.getn(global.modtrainroutes.station2id)
+	global.modtrainroutes.id2station[stationId] = station
 	return stationId
 end
 
@@ -288,24 +293,22 @@ script.on_event({defines.input_action.edit_train_schedule},
 
 
 
-
 script.on_event({defines.events.on_tick},
 	function (e)
 		if not (e.tick % 120 == 0) then
 			return
 		end
 		
+		ensure_mod_context();
 		
-		
-		
-		build_route_mapping_based_on_trains(e.tick)
+		build_route_mapping_based_on_trains(e.tick);
 		
 		local stationName2stationList = {}
 		local stationId2arrivalTrainIds = {}
 		local stationId2item2count = {}
 		
-		for trainId, curRouteId in pairs(trainId2curRouteId) do
-			local reqTrain = trainId2train[trainId];
+		for trainId, curRouteId in pairs(global.modtrainroutes.trainId2curRouteId) do
+			local reqTrain = global.modtrainroutes.trainId2train[trainId];
 			if reqTrain.state == defines.train_state.no_path then
 				-- game.print('No path found for train #' .. reqTrain.id .. ' on route: ' .. curRouteId);
 				
@@ -345,7 +348,7 @@ script.on_event({defines.events.on_tick},
 			end
 		end
 		
-		for stationId, station in pairs(id2station) do
+		for stationId, station in pairs(global.modtrainroutes.id2station) do
 			if station.valid then
 				for _idx2_, conn in pairs(station.circuit_connection_definitions) do
 					if conn.wire == defines.wire_type.red and conn.target_entity and conn.target_entity.type == 'constant-combinator' then
@@ -362,7 +365,7 @@ script.on_event({defines.events.on_tick},
 		end
 		
 		for stationId, item2count in pairs(stationId2item2count) do
-			local station = id2station[stationId]
+			local station = global.modtrainroutes.id2station[stationId]
 			
 			for _idx2_, conn in pairs(station.circuit_connection_definitions) do
 				if conn.wire == defines.wire_type.red and conn.target_entity and conn.target_entity.type == 'constant-combinator' then
@@ -386,8 +389,8 @@ script.on_event({defines.events.on_tick},
 		
 		
 			
-		for reqTrainId, reqRouteId in pairs(trainId2reqRouteId) do
-			local reqTrain = trainId2train[reqTrainId];
+		for reqTrainId, reqRouteId in pairs(global.modtrainroutes.trainId2reqRouteId) do
+			local reqTrain = global.modtrainroutes.trainId2train[reqTrainId];
 			local defTrain = search_deftrain_based_on_routeid(reqRouteId)
 			
 			if defTrain then
@@ -401,55 +404,38 @@ script.on_event({defines.events.on_tick},
 		
 		-- only process route-definition changes, if the last change happened N ticks ago
 		local minTimeElapsed = 3*60
-		for chgRouteId, _val_ in pairs(defRouteId2changed) do
-			defRouteId2lastChangedAt[chgRouteId] = e.tick
-			defRouteId2changed[chgRouteId] = false
+		for chgRouteId, _val_ in pairs(global.modtrainroutes.defRouteId2changed) do
+			global.modtrainroutes.defRouteId2lastChangedAt[chgRouteId] = e.tick
+			global.modtrainroutes.defRouteId2changed[chgRouteId] = false
 			-- game.print('Found updated schedules for route: ' .. chgRouteId .. ' (but not applying them yet)')
 		end
 		
-		for chgRouteId, lastChangedAt in pairs(defRouteId2lastChangedAt) do
+		for chgRouteId, lastChangedAt in pairs(global.modtrainroutes.defRouteId2lastChangedAt) do
 			if lastChangedAt and ((e.tick - lastChangedAt) > minTimeElapsed) then
-				defRouteId2changed[chgRouteId] = true
-				defRouteId2lastChangedAt[chgRouteId] = nil
+				global.modtrainroutes.defRouteId2changed[chgRouteId] = true
+				global.modtrainroutes.defRouteId2lastChangedAt[chgRouteId] = nil
 			end
 		end
 		
 		
-		local changedAnything = false
-		for chgRouteId, changed in pairs(defRouteId2changed) do
-			if not changed then
-				goto continue
-			end
-			
-			local changedTrainCount = 0;
-			for curTrainId, curRouteId in pairs(trainId2curRouteId) do
-				if chgRouteId == curRouteId then				
-					local curTrain = trainId2train[curTrainId];
-					local defTrain = search_deftrain_based_on_routeid(chgRouteId)
-					
-					if defTrain then
-						-- game.print('Updated schedule of train #' .. curTrain.id .. ' on route \'' .. chgRouteId .. '\'');
-						assign_train_to_route(defTrain, curTrain, chgRouteId)
-						changedTrainCount = changedTrainCount + 1
+		for chgRouteId, changed in pairs(global.modtrainroutes.defRouteId2changed) do
+			if changed then
+				local changedTrainCount = 0;
+				for curTrainId, curRouteId in pairs(global.modtrainroutes.trainId2curRouteId) do
+					if chgRouteId == curRouteId then				
+						local curTrain = global.modtrainroutes.trainId2train[curTrainId];
+						local defTrain = search_deftrain_based_on_routeid(chgRouteId)
+						
+						if defTrain then
+							-- game.print('Updated schedule of train #' .. curTrain.id .. ' on route \'' .. chgRouteId .. '\'');
+							assign_train_to_route(defTrain, curTrain, chgRouteId)
+							changedTrainCount = changedTrainCount + 1
+						end
 					end
-				end
+				end			
+				
+				game.print('Updated schedules for ' .. changedTrainCount .. ' trains on route: ' .. chgRouteId)
 			end
-			
-			local verb;
-			if isFirstTick then
-				verb = 'Loaded'
-			else
-				verb = 'Updated'
-			end
-			
-			
-			game.print(verb .. ' schedules for ' .. changedTrainCount .. ' trains on route: ' .. chgRouteId)
-			changedAnything = true
-			::continue::
-		end
-			
-		if changedAnything then
-			isFirstTick = false
 		end
 	end
 )

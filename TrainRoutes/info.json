@@ -1,11 +1,11 @@
 {
     "name": "TrainRoutes",
-    "version": "0.1.1",
-    "title": "RivensTrainRoutes",
+    "version": "0.1.2",
+    "title": "Rivens Train Routes",
     "author": "Riven",
     "contact": "",
     "homepage": "",
-    "factorio_version": "0.16",
-    "dependencies": ["base >= 0.16"],
+    "factorio_version": "0.17",
+    "dependencies": ["base >= 0.17"],
     "description": "This mod adds routes that are shared among trains."
 }

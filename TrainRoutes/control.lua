@@ -56,7 +56,8 @@ function deeptostring(orig)
         for orig_key, orig_value in next, orig, nil do
             text = text .. deeptostring(orig_key) .. '=' .. deeptostring(orig_value) .. ','
         end
-        text = '[' .. text .. deeptostring(getmetatable(orig)) .. ']'
+        -- text = '[' .. text .. deeptostring(getmetatable(orig)) .. ']'
+        text = '[' .. text .. ']'
     else
         text = tostring(orig)
     end
@@ -66,6 +67,7 @@ end
 
 routePrefix = 'Route: '
 assignedToRoutePrefix = 'Assigned to route: '
+routeNoPathPrefix = 'Route: no path'
 
 isFirstTick = true
 trainId2train = {}
@@ -76,6 +78,9 @@ defRouteId2trainId = {}
 defRouteId2checksum = {}
 defRouteId2changed = {}
 defRouteId2lastChangedAt = {}
+
+station2id = {}
+id2station = {}
 
 
 
@@ -156,42 +161,50 @@ function build_route_mapping_based_on_trains()
 	local defRouteId2checksumOld = shallowcopy(defRouteId2checksum);
 	defRouteId2checksum = {}
 
+	-- iterate all trains in all surfaces
 	for _idx1_, surface in pairs(game.surfaces) do
 		for _idx2_, train in pairs(surface.get_trains()) do
 			local trainId = train.id
 			trainId2train[trainId] = train
 			
-			if train.schedule and train.schedule.records then
-				local scheduleRecordCount = table_length(train.schedule.records);
-				if scheduleRecordCount == 0 then
-					goto continue
-				end
-				local firstScheduleRecord = train.schedule.records[1]
-				
-				if starts_with(firstScheduleRecord.station, routePrefix) then
-					local routeId = firstScheduleRecord.station:sub(#routePrefix + 1)
-					if scheduleRecordCount == 1 then
-						-- trains with Route REQUESTS
-						trainId2reqRouteId[trainId] = routeId
-					else
-						-- trains with Route DEFINITIONS
-						trainId2defRouteId[trainId] = routeId
-						defRouteId2trainId[routeId] = trainId
+			if not (train.schedule and train.schedule.records) then
+				goto continue
+			end
+			
+			local scheduleRecordCount = table_length(train.schedule.records);
+			if scheduleRecordCount == 0 then
+				goto continue
+			end
+			
+			local firstScheduleRecord = train.schedule.records[1]
+			if firstScheduleRecord.station == nil then
+				goto continue
+			end
+			
+			if starts_with(firstScheduleRecord.station, routePrefix) then
+				local routeId = firstScheduleRecord.station:sub(#routePrefix + 1)
+				if scheduleRecordCount == 1 then
+					-- trains with Route REQUESTS
+					trainId2reqRouteId[trainId] = routeId
+				else
+					-- trains with Route DEFINITIONS
+					trainId2defRouteId[trainId] = routeId
+					defRouteId2trainId[routeId] = trainId
+					
+					-- did anything change in the schedule?
+					local oldChecksum = defRouteId2checksumOld[routeId];
+					local newChecksum = create_schedule_checksum(train.schedule);
+					defRouteId2checksum[routeId] = newChecksum
 						
-						local oldChecksum = defRouteId2checksumOld[routeId];
-						local newChecksum = create_schedule_checksum(train.schedule);
-						defRouteId2checksum[routeId] = newChecksum
-							
-						if not (oldChecksum == newChecksum) then
-							defRouteId2changed[routeId] = true
-						end
+					if not (oldChecksum == newChecksum) then
+						defRouteId2changed[routeId] = true
 					end
-				elseif starts_with(firstScheduleRecord.station, assignedToRoutePrefix) then
-					local routeId = firstScheduleRecord.station:sub(#assignedToRoutePrefix + 1)
-					if scheduleRecordCount > 1 then
-						-- trains with Route ASSIGNED
-						trainId2curRouteId[trainId] = routeId
-					end
+				end
+			elseif starts_with(firstScheduleRecord.station, assignedToRoutePrefix) then
+				local routeId = firstScheduleRecord.station:sub(#assignedToRoutePrefix + 1)
+				if scheduleRecordCount > 1 then
+					-- trains with Route ASSIGNED
+					trainId2curRouteId[trainId] = routeId
 				end
 			end
 			
@@ -226,6 +239,40 @@ end
 
 
 
+
+function add_train_contents_to_station(train, stationId, stationId2item2count)
+	local item2count = stationId2item2count[stationId]
+	if not item2count then
+		item2count = {}
+		stationId2item2count[stationId] = item2count
+	end
+	
+	for itemName, itemCount in pairs(train.get_contents()) do
+		local curCount = item2count[itemName]
+		if not curCount then
+			curCount = 0
+		end
+		item2count[itemName] = curCount + itemCount
+	end
+end
+
+
+
+
+function stationToId(station)
+	for idx, elem in pairs(station2id) do
+		if elem == station then
+			return idx
+		end
+	end
+	
+	table.insert(station2id, station)
+	local stationId = table_length(station2id) -- table.getn(station2id)
+	id2station[stationId] = station
+	return stationId
+end
+
+
 -- script.on_event({defines.input_action.drag_train_schedule},
 -- 	function (e)
 -- 		game.print('DRAGGED TRAIN SCHEDULE');
@@ -252,6 +299,90 @@ script.on_event({defines.events.on_tick},
 		
 		
 		build_route_mapping_based_on_trains(e.tick)
+		
+		local stationName2stationList = {}
+		local stationId2arrivalTrainIds = {}
+		local stationId2item2count = {}
+		
+		for trainId, curRouteId in pairs(trainId2curRouteId) do
+			local reqTrain = trainId2train[trainId];
+			if reqTrain.state == defines.train_state.no_path then
+				-- game.print('No path found for train #' .. reqTrain.id .. ' on route: ' .. curRouteId);
+				
+				
+			end
+			
+			if reqTrain.station or reqTrain.path_end_stop then
+				local station = nil
+				if reqTrain.station then
+					station = reqTrain.station
+				else 
+					station = reqTrain.path_end_stop
+				end
+				local stationId = stationToId(station)
+				local stationName = station.backer_name
+
+				
+				
+				local arrivalTrainIds = stationId2arrivalTrainIds[stationId]
+				if not arrivalTrainIds then
+					arrivalTrainIds = {}
+					stationId2arrivalTrainIds[stationId] = arrivalTrainIds
+				end
+				arrivalTrainIds[trainId] = true
+
+				
+				
+				local stationList = stationName2stationList[stationName]
+				if not stationList then
+					stationList = {}
+					stationName2stationList[stationName] = stationList
+				end
+				table.insert(stationList, station)
+				
+				
+				add_train_contents_to_station(reqTrain, stationId, stationId2item2count)				
+			end
+		end
+		
+		for stationId, station in pairs(id2station) do
+			if station.valid then
+				for _idx2_, conn in pairs(station.circuit_connection_definitions) do
+					if conn.wire == defines.wire_type.red and conn.target_entity and conn.target_entity.type == 'constant-combinator' then
+						local slot = conn.target_entity.get_control_behavior()
+					
+						slot.set_signal(1, nil);
+						slot.set_signal(2, nil);
+						slot.set_signal(3, nil);
+						
+						-- game.print('Resetting station #' .. station.backer_name);
+					end
+				end
+			end
+		end
+		
+		for stationId, item2count in pairs(stationId2item2count) do
+			local station = id2station[stationId]
+			
+			for _idx2_, conn in pairs(station.circuit_connection_definitions) do
+				if conn.wire == defines.wire_type.red and conn.target_entity and conn.target_entity.type == 'constant-combinator' then
+					local slot = conn.target_entity.get_control_behavior()
+					
+					slot.set_signal(1, nil);
+					slot.set_signal(2, nil);
+					slot.set_signal(3, nil);
+					
+					
+					local _idx3_ = 1
+					for item, count in pairs(item2count) do
+						slot.set_signal(_idx3_, {signal={type='item'; name=item}; count=count});
+						_idx3_ = _idx3_ + 1
+					end
+				end
+			end
+		end
+		
+		
 		
 		
 			

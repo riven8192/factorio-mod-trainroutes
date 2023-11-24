@@ -205,7 +205,7 @@ end
 function search_deftrain_based_on_routeid(routeId)
 	
 	if not defRouteId2trainId[routeId] then
-		game.print('Failed to find Route ' .. routeId)
+		-- game.print('Failed to find Route ' .. routeId)
 		return nil
 	end
 	local defTrainId = defRouteId2trainId[routeId]
